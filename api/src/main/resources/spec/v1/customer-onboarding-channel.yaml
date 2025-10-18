@@ -1,0 +1,200 @@
+openapi: 3.0.3
+info:
+  title: Onboarding – Channel API
+  version: 1.0.0
+  description: Start onboarding, register document uploads (presigned URLs), and query status.
+
+servers:
+  - url: https://api.example.com/v1
+    description: Channel surface
+
+security:
+  - bearerAuth: []
+
+paths:
+  /onboardings:
+    post:
+      summary: Create a new customer onboarding
+      operationId: createCustomerOnboarding
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - $ref: 'customer-onboarding-common.yaml#/components/parameters/IdempotencyKeyHeader'
+        - $ref: 'customer-onboarding-common.yaml#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: 'customer-onboarding-common.yaml#/components/schemas/CustomerOnboardingCreateRequest' }
+            examples:
+              sample:
+                $ref: 'customer-onboarding-common.yaml#/components/examples/CustomerOnboardingCreateRequestSample'
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/OnboardingLocation'
+            X-Request-ID:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/RequestIdEcho'
+            Idempotency-Replayed:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/IdempotencyReplayed'
+            X-RateLimit-Limit:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema: { $ref: 'customer-onboarding-common.yaml#/components/schemas/CustomerOnboardingResponse' }
+              examples:
+                created:
+                  value:
+                    id: "4f3c0f26-2b1e-4d1d-9d1f-3b8fd1a0a9a1"
+                    status: "PENDING_DOCS"
+                    createdAt: "2025-10-17T12:00:00Z"
+                    expiresAt: "2025-10-17T16:00:00Z"
+                    missingDocs: ["PASSPORT", "PHOTO"]
+        '401': { $ref: 'customer-onboarding-common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: 'customer-onboarding-common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: Customer already exists
+          content:
+            application/json:
+              schema: { $ref: 'customer-onboarding-common.yaml#/components/schemas/ErrorResponse' }
+              examples:
+                conflict:
+                  value:
+                    timestamp: "2025-10-17T12:00:05Z"
+                    code: "ONB-409-CUSTOMER_EXISTS"
+                    message: "Customer already has an active relationship with the bank."
+                    traceId: "f1e2d3c4a5b6"
+        '429': { $ref: 'customer-onboarding-common.yaml#/components/responses/TooManyRequests' }
+
+  /onboardings/{id}:
+    get:
+      summary: Get onboarding status
+      operationId: getCustomerOnboarding
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - $ref: 'customer-onboarding-common.yaml#/components/parameters/RequestIdHeader'
+        - in: path
+          name: id
+          required: true
+          schema: { $ref: 'customer-onboarding-common.yaml#/components/schemas/OnboardingId' }
+          example: "4f3c0f26-2b1e-4d1d-9d1f-3b8fd1a0a9a1"
+      responses:
+        '200':
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/RequestIdEcho'
+            X-RateLimit-Limit:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema: { $ref: 'customer-onboarding-common.yaml#/components/schemas/CustomerOnboardingResponse' }
+              examples:
+                pending:
+                  value:
+                    id: "4f3c0f26-2b1e-4d1d-9d1f-3b8fd1a0a9a1"
+                    status: "IN_REVIEW"
+                    createdAt: "2025-10-17T12:00:00Z"
+                    expiresAt: "2025-10-17T16:00:00Z"
+                    missingDocs: []
+        '401': { $ref: 'customer-onboarding-common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: 'customer-onboarding-common.yaml#/components/responses/Forbidden' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: 'customer-onboarding-common.yaml#/components/schemas/ErrorResponse' }
+              examples:
+                notFound:
+                  value:
+                    timestamp: "2025-10-17T12:06:03Z"
+                    code: "ONB-404-NOT_FOUND"
+                    message: "Onboarding not found."
+                    traceId: "afc1b0c9f5b4"
+        '429': { $ref: 'customer-onboarding-common.yaml#/components/responses/TooManyRequests' }
+
+  /onboardings/{id}/documents:
+    put:
+      summary: Register required documents and obtain presigned upload URLs
+      operationId: registerOnboardingDocuments
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - $ref: 'customer-onboarding-common.yaml#/components/parameters/IdempotencyKeyHeader'
+        - $ref: 'customer-onboarding-common.yaml#/components/parameters/RequestIdHeader'
+        - in: path
+          name: id
+          required: true
+          schema: { $ref: 'customer-onboarding-common.yaml#/components/schemas/OnboardingId' }
+          example: "4f3c0f26-2b1e-4d1d-9d1f-3b8fd1a0a9a1"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: 'customer-onboarding-common.yaml#/components/schemas/DocumentRegistrationRequest' }
+            examples:
+              docs:
+                $ref: 'customer-onboarding-common.yaml#/components/examples/DocumentRegistrationDocs'
+      responses:
+        '202':
+          description: Presigned URLs issued
+          headers:
+            X-Request-ID:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/RequestIdEcho'
+            X-RateLimit-Limit:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema: { $ref: 'customer-onboarding-common.yaml#/components/schemas/PresignedUploadResponse' }
+              examples:
+                urls:
+                  value:
+                    uploads:
+                      - type: PASSPORT
+                        url: "https://storage.example/upload/passport_4f3c0f26.jpg?sig=..."
+                        method: PUT
+                        fields: {}
+                      - type: PHOTO
+                        url: "https://storage.example/upload/photo_4f3c0f26.jpg?sig=..."
+                        method: PUT
+                        fields: {}
+        '401': { $ref: 'customer-onboarding-common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: 'customer-onboarding-common.yaml#/components/responses/Forbidden' }
+        '404':
+          description: Onboarding not found
+          content:
+            application/json:
+              schema: { $ref: 'customer-onboarding-common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: Invalid/missing data
+          content:
+            application/json:
+              schema: { $ref: 'customer-onboarding-common.yaml#/components/schemas/ErrorResponse' }
+              examples:
+                badDocs:
+                  value:
+                    timestamp: "2025-10-17T12:10:00Z"
+                    code: "ONB-422-VALIDATION"
+                    message: "Unsupported document type."
+                    details:
+                      - field: "documents[0].type"
+                        issue: "Must be one of [PASSPORT, PHOTO]"
+                    traceId: "dd01aa22"
+        '429': { $ref: 'customer-onboarding-common.yaml#/components/responses/TooManyRequests' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: 'customer-onboarding-common.yaml#/components/securitySchemes/bearerAuth'

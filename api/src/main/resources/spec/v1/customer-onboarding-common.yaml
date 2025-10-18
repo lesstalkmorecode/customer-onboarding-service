@@ -1,0 +1,360 @@
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Repeat-safe key (24h TTL). Same method+URL+body returns the original response.
+      schema:
+        title: IdempotencyKey
+        type: string
+        minLength: 1
+        maxLength: 100
+    RequestIdHeader:
+      name: X-Request-ID
+      in: header
+      required: false
+      description: Optional caller correlation id; echoed back in responses.
+      schema:
+        title: RequestId
+        type: string
+        maxLength: 100
+
+  headers:
+    OnboardingLocation:
+      description: URL of the created onboarding resource
+      schema:
+        $ref: '#/components/schemas/OnboardingLocationUrl'
+      example: "https://api.example.com/onboardings/4f3c0f26-2b1e-4d1d-9d1f-3b8fd1a0a9a1"
+    RequestIdEcho:
+      description: Echo of X-Request-ID (or server-generated if absent).
+      schema:
+        title: RequestId
+        type: string
+    RateLimitLimit:
+      description: Max requests allowed in the current window.
+      schema:
+        title: RateLimitLimit
+        type: integer
+        format: int32
+    RateLimitRemaining:
+      description: Remaining requests in the current window.
+      schema:
+        title: RateLimitRemaining
+        type: integer
+        format: int32
+    RateLimitReset:
+      description: Epoch seconds when the current window resets.
+      schema:
+        title: RateLimitReset
+        type: integer
+        format: int64
+    IdempotencyReplayed:
+      description: True if response was served from a prior request with the same Idempotency-Key and body.
+      schema:
+        title: IdempotencyReplayed
+        type: boolean
+
+  responses:
+    Unauthorized:
+      description: Missing/invalid bearer token.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestIdEcho'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Token lacks required permission.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestIdEcho'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: Rate limit exceeded.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestIdEcho'
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/RateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/RateLimitRemaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/RateLimitReset'
+        Retry-After:
+          description: Seconds until another request is permitted.
+          schema:
+            title: RetryAfterSeconds
+            type: integer
+            format: int32
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  examples:
+    CustomerOnboardingCreateRequestSample:
+      value:
+        firstName: "Ayşe"
+        lastName: "Demir"
+        gender: "FEMALE"
+        dateOfBirth: "1993-05-14"
+        phone: "+31612345678"
+        email: "ayse.demir@example.com"
+        nationality: "NL"
+        residentialAddress:
+          line1: "Herengracht 1"
+          city: "Amsterdam"
+          postalCode: "1015BA"
+          country: "NL"
+        ssn: "123-45-6789"
+
+    DocumentRegistrationDocs:
+      value:
+        documents:
+          - type: "PASSPORT"
+            fileName: "passport.jpg"
+            contentType: "image/jpeg"
+          - type: "PHOTO"
+            fileName: "photo.jpg"
+            contentType: "image/jpeg"
+
+    VerificationDecisionPass:
+      value:
+        checkType: "KYC"
+        outcome: "PASS"
+        decidedAt: "2025-10-17T12:03:00Z"
+        sourceSystem: "kyc-orchestrator"
+        correlationId: "dec-12345"
+    VerificationDecisionFail:
+      value:
+        checkType: "SANCTIONS"
+        outcome: "FAIL"
+        reasons: ["NAME_MATCH_ON_LIST"]
+        decidedAt: "2025-10-17T12:04:10Z"
+        sourceSystem: "sanctions-engine"
+    VerificationDecisionReview:
+      value:
+        checkType: "FRAUD"
+        outcome: "REVIEW"
+        reasons: ["DEVICE_FINGERPRINT_HIGH_RISK"]
+        decidedAt: "2025-10-17T12:05:00Z"
+        sourceSystem: "fraud-engine"
+
+  schemas:
+    # ----- Requests -----
+    CustomerOnboardingCreateRequest:
+      type: object
+      required:
+        - firstName
+        - lastName
+        - gender
+        - dateOfBirth
+        - phone
+        - email
+        - nationality
+        - residentialAddress
+        - ssn
+      properties:
+        firstName:
+          type: string
+          maxLength: 100
+        lastName:
+          type: string
+          maxLength: 100
+        gender:
+          type: string
+          enum: [MALE, FEMALE, OTHER, UNKNOWN]
+        dateOfBirth:
+          type: string
+          format: date
+        phone:
+          type: string
+          description: E.164 format recommended
+        email:
+          type: string
+          format: email
+        nationality:
+          type: string
+          description: ISO 3166-1 alpha-2 country code
+          minLength: 2
+          maxLength: 2
+        residentialAddress:
+          $ref: '#/components/schemas/Address'
+        ssn:
+          type: string
+          description: Social Security / national identifier
+          maxLength: 64
+
+    DocumentRegistrationRequest:
+      type: object
+      required: [documents]
+      properties:
+        documents:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/DocumentDescriptor'
+    DocumentDescriptor:
+      type: object
+      required: [ type, fileName, contentType ]
+      properties:
+        type:
+          type: string
+          enum: [ PASSPORT, PHOTO ]
+        fileName:
+          type: string
+        contentType:
+          type: string
+
+    VerificationDecision:
+      type: object
+      required: [checkType, outcome, decidedAt]
+      properties:
+        checkType:
+          type: string
+          enum: [KYC, AML, SANCTIONS, PEP, FRAUD, ADDRESS, LIVENESS]
+        outcome:
+          type: string
+          enum: [PASS, FAIL, REVIEW]
+        reasons:
+          type: array
+          items:
+            type: string
+          nullable: true
+        decidedAt:
+          type: string
+          format: date-time
+        sourceSystem:
+          type: string
+          nullable: true
+        correlationId:
+          type: string
+          nullable: true
+
+    # ----- Responses -----
+    CustomerOnboardingResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING_DOCS, IN_REVIEW, COMPLETED, REJECTED, EXPIRED]
+        accountNumber:
+          type: string
+          nullable: true
+          description: Present only when COMPLETED
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        missingDocs:
+          type: array
+          items:
+            type: string
+
+    PresignedUploadResponse:
+      type: object
+      properties:
+        uploads:
+          type: array
+          items:
+            $ref: '#/components/schemas/PresignedUploadTarget'
+    PresignedUploadTarget:
+      type: object
+      properties:
+        type:
+          type: string
+        url:
+          type: string
+          format: uri
+        method:
+          type: string
+          enum: [ PUT, POST ]
+        fields:
+          type: object
+          additionalProperties: true
+
+    AckResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [ACCEPTED]
+        message:
+          type: string
+        traceId:
+          type: string
+
+    # ----- Value Objects -----
+    Address:
+      type: object
+      required: [line1, city, postalCode, country]
+      properties:
+        line1:
+          type: string
+          maxLength: 200
+        line2:
+          type: string
+          nullable: true
+          maxLength: 200
+        city:
+          type: string
+          maxLength: 100
+        postalCode:
+          type: string
+          maxLength: 20
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2
+          minLength: 2
+          maxLength: 2
+
+    # ----- Errors -----
+    ErrorResponse:
+      type: object
+      description: Standard error
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+        traceId:
+          type: string
+    ErrorDetail:
+      type: object
+      properties:
+        field: { type: string }
+        issue: { type: string }
+    OnboardingId:
+      type: string
+      format: uuid
+      description: Onboarding resource identifier (UUID)
+    OnboardingLocationUrl:
+      type: string
+      format: uri
+      description: Absolute URL of the created onboarding resource

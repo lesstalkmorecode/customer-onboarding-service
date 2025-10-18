@@ -1,0 +1,80 @@
+openapi: 3.0.3
+info:
+  title: Onboarding – Decisions API
+  version: 1.0.0
+  description: Decision intake used by backend processors/orchestrators.
+
+servers:
+  - url: https://api.example.com/v1
+    description: Decisions surface
+
+security:
+  - bearerAuth: []
+
+paths:
+  /onboardings/{onboardingId}/decisions:
+    post:
+      summary: Submit a verification decision
+      operationId: submitVerificationDecision
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - $ref: 'customer-onboarding-common.yaml#/components/parameters/RequestIdHeader'
+        - in: path
+          name: onboardingId
+          required: true
+          schema: { $ref: 'customer-onboarding-common.yaml#/components/schemas/OnboardingId' }
+          example: "4f3c0f26-2b1e-4d1d-9d1f-3b8fd1a0a9a1"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: 'customer-onboarding-common.yaml#/components/schemas/VerificationDecision' }
+            examples:
+              pass:
+                $ref: 'customer-onboarding-common.yaml#/components/examples/VerificationDecisionPass'
+              fail:
+                $ref: 'customer-onboarding-common.yaml#/components/examples/VerificationDecisionFail'
+              review:
+                $ref: 'customer-onboarding-common.yaml#/components/examples/VerificationDecisionReview'
+      responses:
+        '202':
+          description: Accepted
+          headers:
+            X-Request-ID:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/RequestIdEcho'
+            X-RateLimit-Limit:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: 'customer-onboarding-common.yaml#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema: { $ref: 'customer-onboarding-common.yaml#/components/schemas/AckResponse' }
+              examples:
+                ack:
+                  value:
+                    timestamp: "2025-10-17T12:06:02Z"
+                    status: "ACCEPTED"
+                    message: "Decision accepted for processing."
+                    traceId: "afc1b0c9f5b4"
+        '401': { $ref: 'customer-onboarding-common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: 'customer-onboarding-common.yaml#/components/responses/Forbidden' }
+        '404':
+          description: Onboarding not found
+          content:
+            application/json:
+              schema: { $ref: 'customer-onboarding-common.yaml#/components/schemas/ErrorResponse' }
+              examples:
+                notFound:
+                  value:
+                    timestamp: "2025-10-17T12:06:03Z"
+                    code: "ONB-404-NOT_FOUND"
+                    message: "Onboarding not found."
+                    traceId: "afc1b0c9f5b4"
+        '429': { $ref: 'customer-onboarding-common.yaml#/components/responses/TooManyRequests' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: 'customer-onboarding-common.yaml#/components/securitySchemes/bearerAuth'
